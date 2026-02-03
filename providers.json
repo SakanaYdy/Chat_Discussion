@@ -1,0 +1,16 @@
+{
+  "OpenAI默认": {
+    "name": "OpenAI默认",
+    "kind": "openai",
+    "base_url": "https://openkey.cloud/v1",
+    "api_key": "sk-x8fIN1298svFDkr829Df20Be2eC348D9846b57F4C90f8141",
+    "model": "gpt-4o-mini"
+  },
+  "通义千问默认": {
+    "name": "通义千问默认",
+    "kind": "qwen",
+    "base_url": "https://dashscope.aliyuncs.com",
+    "api_key": "sk-f1413a8a336a48ec93c44484d1700539",
+    "model": "qwen-plus"
+  }
+}

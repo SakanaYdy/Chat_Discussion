@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>多模型方案讨论系统</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f6f7f9; color: #222; }
+    header { background: #1f6feb; color: #fff; padding: 16px 24px; }
+    main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; outline: none; }
+    textarea { min-height: 120px; resize: vertical; }
+    .models { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    .models label { font-weight: 500; }
+    .actions { display: flex; gap: 12px; margin-top: 12px; }
+    button { background: #1f6feb; color: #fff; border: none; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .item { border-top: 1px dashed #e5e7eb; padding-top: 12px; margin-top: 12px; }
+    .model-tag { display: inline-block; background: #eef2ff; color: #1f3a8a; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-right: 8px; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .summary { background: #fef3c7; border: 1px solid #fcd34d; }
+    .hint { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>多模型方案讨论系统</h1>
+    <p class="hint">配置多个模型参与讨论，并由总结模型给出最终方案</p>
+  </header>
+  <main>
+    <section class="card">
+      <h2>问题设置</h2>
+      <label>主题</label>
+      <input type="text" id="topic" placeholder="例如：企业内部知识库搭建">
+      <label>具体问题/目标</label>
+      <textarea id="question" placeholder="尽可能清晰地描述你的目标与约束"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>模型配置</h2>
+      <div class="models">
+        <label><input type="checkbox" id="m-openai" checked> 参与：OpenAI</label>
+        <label><input type="checkbox" id="m-qwen" checked> 参与：通义千问</label>
+      </div>
+      <label>总结模型</label>
+      <select id="summarizer">
+        <option value="openai">OpenAI</option>
+        <option value="qwen">通义千问</option>
+      </select>
+      <p class="hint">在启动服务前请设置环境变量：OPENAI_API_KEY 与/或 DASHSCOPE_API_KEY</p>
+      <div class="actions">
+        <button id="run">开始讨论并生成方案</button>
+        <button id="reset" type="button">清空结果</button>
+      </div>
+    </section>
+
+    <section class="card" id="result">
+      <h2>讨论结果</h2>
+      <div id="discussions"></div>
+    </section>
+
+    <section class="card summary" id="summaryCard" style="display:none">
+      <h2>最终方案</h2>
+      <pre id="summary"></pre>
+    </section>
+  </main>
+
+  <script>
+    const runBtn = document.getElementById('run');
+    const resetBtn = document.getElementById('reset');
+    const topicEl = document.getElementById('topic');
+    const questionEl = document.getElementById('question');
+    const discussionsEl = document.getElementById('discussions');
+    const summaryEl = document.getElementById('summary');
+    const summaryCard = document.getElementById('summaryCard');
+
+    function renderDiscussions(items) {
+      discussionsEl.innerHTML = '';
+      items.forEach((d, idx) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const tag = document.createElement('span');
+        tag.className = 'model-tag';
+        tag.textContent = `#${idx+1} ${d.model}`;
+        const pre = document.createElement('pre');
+        pre.textContent = d.error ? ('错误：' + d.error) : d.content;
+        div.appendChild(tag);
+        div.appendChild(pre);
+        discussionsEl.appendChild(div);
+      });
+    }
+
+    resetBtn.addEventListener('click', () => {
+      discussionsEl.innerHTML = '';
+      summaryEl.textContent = '';
+      summaryCard.style.display = 'none';
+    });
+
+    runBtn.addEventListener('click', async () => {
+      const topic = topicEl.value.trim();
+      const question = questionEl.value.trim();
+      const models = [];
+      if (document.getElementById('m-openai').checked) models.push('openai');
+      if (document.getElementById('m-qwen').checked) models.push('qwen');
+      const summarizer = document.getElementById('summarizer').value;
+
+      if (!topic || !question || models.length === 0) {
+        alert('请填写主题、问题，并至少选择一个参与模型');
+        return;
+      }
+      runBtn.disabled = true;
+      runBtn.textContent = '正在讨论...';
+      try {
+        const resp = await fetch('/api/discuss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic, question, models, summarizer,
+            modelOptions: {
+              openai: { model: 'gpt-4o-mini' },
+              qwen: { model: 'qwen-plus' }
+            }
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          alert(data.error || '请求失败');
+          return;
+        }
+        renderDiscussions(data.discussions || []);
+        summaryEl.textContent = data.summary || '';
+        summaryCard.style.display = 'block';
+      } catch (e) {
+        alert('请求异常：' + e);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = '开始讨论并生成方案';
+      }
+    });
+  </script>
+</body>
+</html>
+
